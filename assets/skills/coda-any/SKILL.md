@@ -1,0 +1,113 @@
+---
+name: coda-any
+description: "Use when the user wants to customize existing Coda Skills, create a new workflow Skill, upgrade an existing Skill, or orchestrate arbitrary Skills with Workflow Nodes, Skill Bindings, and Output Schemas."
+---
+
+# Coda Any - Skill Maker
+
+`/coda-any` is the Coda Skill creation guide. The user describes the workflow they want; this Skill resolves real Skills, proposes a plan, waits for confirmation, generates a verifiable Coda-native Skill Bundle, and internally drives eval, review, publish readiness, and install preview.
+
+Ordinary users see three starting points:
+
+- `customize existing Coda Skills`: overlay the existing five phase Skills for `open / design / build / verify / archive` without modifying the `/coda` command itself.
+- `create a new workflow Skill`: generate a new `workflow-kernel` from the goal and candidate Skills.
+- `upgrade an existing Skill`: read existing Skills and add Workflow Nodes, Skill Bindings, Output Schemas, Guardrails, Handoffs, eval, and readiness.
+
+Bundle, Factory, and composition are backend audit terms, not the first-screen user model.
+
+## Core Model
+
+Every path compiles to one Workflow Contract:
+
+- `Workflow Node`: a resumable workflow node such as `open`, `design`, `plan`, `execute`, `subagent-execute`, `review`, `verify`, or `archive`.
+- `Node Responsibility`: the responsibility this Node owns in the Agent workflow, explaining why it exists, what it must produce, and whether it can be replaced.
+- `Skill Binding`: the implementation or helper Skill bound to a Node.
+- `Required Skill Call`: a Skill that must be called inside a Node without replacing the Node implementation. For example, `execute` and `subagent-execute` may require `elementui`, while `review` may require `whitebox-code-standard`.
+- `Output Schema`: the artifacts, state, or evidence a Node must produce. Scripts, eval, and readiness depend on Output Schemas, not Skill names.
+- `Guardrail`: a check that blocks or allows Node advancement.
+- `Handoff`: evidence returned by a subagent or cross-Node delegation.
+- `workflow-protocol.json`: the package's single runtime source of truth, with kind `coda-five-phase-overlay` or `workflow-kernel`.
+
+## Protected Boundary
+
+`coda-five-phase-overlay` preserves the Coda control flow and `.coda.yaml` state semantics. In ordinary mode:
+
+- `control` Nodes cannot be overridden: `open`, `execute`, `verify`, `archive`.
+- `producer` Nodes may be overridden: `design`, `plan`, but only when the replacement satisfies the matching Output Schema.
+- `handoff` and `guardrail` Nodes may require or augment Skills.
+- If the user insists on replacing a control Node, switch to advanced `workflow-kernel` and require a new state model, Output Schemas, and Guardrails.
+- Every Node must explain its responsibility; internal coordinates are not part of the user-facing workflow model.
+
+## Steps
+
+1. Resume state: internally run `coda bundle factory-guide --project . --json` and show a resume summary.
+2. Read preferences: load `.coda/skill-preferences.yaml`, then use `coda bundle candidates --json` to discover real local Skills and `coda skill show <name> --json` to read each candidate's real content and hash. Do not guess capability from a Skill name.
+3. Build proposal: express the goal as Workflow Nodes, Skill Bindings, Output Schemas, Guardrails, Handoffs, and Evidence.
+4. Show confirmation: list each Node, bound Skill, Required Skill Call, Output Schema, executable disclosure, and readiness impact.
+5. Wait for confirmation: do not write a Bundle draft before confirmation; pause for missing or ambiguous Skills.
+6. Initialize backend state: after confirmation, call `coda bundle factory-init <name> --file <plan.json> --confirmed-proposal --json`.
+7. Run the authoring pipeline and generate the Bundle: run `coda bundle authoring-plan <name> --depth quick|full --json` for the lane DAG. Dispatch lanes by the DAG —wave1 (`script`, `reference`, `pause-points`) in parallel where the platform supports subagents (otherwise inline, in dependency order), wave2 (`workflow-entry`, `skill-core`) after the script contract, and `skill-review` as the barrier. Record each lane via `coda bundle authoring-record <name> --lane <id> --file <out.json> --json` (schema-validated; BLOCKED/NEEDS_CONTEXT is rejected). Then run `coda bundle factory-generate <name> --json`; it merges recorded content-leaf drafts (entry/node SKILL.md, decision-points, recovery) into the package while the deterministic backbone (protocol/scripts/manifest) stays templated, and renders real review evidence. Outputs entry Skill, Node Skills, `reference/workflow-protocol.json`, the six scripts, rules, hooks, and `coda/eval.yaml`.
+8. Validate: show quick/full eval workload and run or record benchmark evidence; failed or skipped eval cannot become ready.
+9. Review readiness: read `coda publish review <name> --platform <reference-platform> --json` and show `Readiness:`, `Blockers:`, `Warnings:`, and `Evidence:`.
+10. Publish and install preview: publish only after human approval; installation must start with preview and show `No files were written`.
+
+## Plan Example
+
+Component-library and whitebox-review requirements should produce a plan like:
+
+```json
+{
+  "goal": "Customize existing Coda Skills with component and whitebox review requirements.",
+  "skillMakerIntent": "customize-coda",
+  "workflow": {
+    "kind": "coda-five-phase-overlay",
+    "name": "team-coda",
+    "goal": "Require component and whitebox review Skills.",
+    "nodes": {
+      "execute": {
+        "requiredSkillCalls": [
+          {
+            "skill": "elementui",
+            "reason": "Use project component library during direct implementation."
+          }
+        ]
+      },
+      "subagent-execute": {
+        "requiredSkillCalls": [
+          {
+            "skill": "elementui",
+            "scope": "handoff"
+          }
+        ]
+      },
+      "review": {
+        "requiredSkillCalls": [
+          {
+            "skill": "whitebox-code-standard",
+            "scope": "review"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+## Hard Rules
+
+- Show the proposal confirmation page before generation.
+- A Required Skill Call does not replace Node implementation.
+- A producer override must declare the Output Schema it satisfies.
+- Ordinary mode must not override control Nodes.
+- Eval, review, and publish readiness must read the same `workflow-protocol.json`.
+- Handoff must require subagents to load Required Skill Calls and return evidence.
+- Scripts read protocol and state; they do not use Skill names as validation authority.
+- Ask before installation. Never install automatically.
+
+## References
+
+- `coda-any/reference/authoring-protocol.json`
+- `coda-any/reference/authored-zone-example.md`
+- `coda-any/reference/bundle-authoring.md`
+- `coda-any/reference/authoring-subagents.md`
+- `coda-any/reference/eval-provider.md`

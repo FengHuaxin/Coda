@@ -1,0 +1,61 @@
+{
+  "version": "0.4.0-beta.1",
+  "skills": [
+    "Coda/SKILL.md",
+    "Coda/reference/auto-transition.md",
+    "Coda/reference/coda-yaml-fields.md",
+    "Coda/reference/context-recovery.md",
+    "Coda/reference/debug-gate.md",
+    "Coda/reference/decision-point.md",
+    "Coda/reference/dirty-worktree.md",
+    "Coda/reference/file-structure.md",
+    "Coda/reference/scripts.md",
+    "Coda/reference/subagent-dispatch.md",
+    "Coda-any/SKILL.md",
+    "Coda-any/reference/authoring-subagents.md",
+    "Coda-any/reference/authored-zone-example.md",
+    "Coda-any/reference/bundle-authoring.md",
+    "Coda-any/reference/eval-provider.md",
+    "Coda-any/reference/subagents/script-author.md",
+    "Coda-any/reference/subagents/reference-author.md",
+    "Coda-any/reference/subagents/workflow-entry-author.md",
+    "Coda-any/reference/subagents/skill-core-author.md",
+    "Coda-any/reference/subagents/pause-points-author.md",
+    "Coda-any/reference/subagents/skill-reviewer.md",
+    "Coda/scripts/Coda-env.mjs",
+    "Coda/scripts/Coda-guard.mjs",
+    "Coda/scripts/Coda-state.mjs",
+    "Coda/scripts/Coda-handoff.mjs",
+    "Coda/scripts/Coda-archive.mjs",
+    "Coda/scripts/Coda-yaml-validate.mjs",
+    "Coda/scripts/Coda-hook-guard.mjs",
+    "Coda/scripts/Coda-runtime.mjs",
+    "Coda-open/SKILL.md",
+    "Coda-design/SKILL.md",
+    "Coda-build/SKILL.md",
+    "Coda-verify/SKILL.md",
+    "Coda-archive/SKILL.md",
+    "Coda-hotfix/SKILL.md",
+    "Coda-tweak/SKILL.md"
+  ],
+  "internalSkills": [
+    "Coda-classic/SKILL.md",
+    "Coda-classic/coda/skill.yaml",
+    "Coda-classic/coda/guardrails.yaml",
+    "Coda-classic/coda/checks.yaml"
+  ],
+  "rules": [
+    "Coda/rules/Coda-phase-guard.md",
+    "Coda/rules/Coda-phase-guard.en.md"
+  ],
+  "hooks": {
+    "Coda/scripts/Coda-hook-guard.mjs": {
+      "matcher": "Write|Edit",
+      "description": "Block code writes in wrong Coda phase (open/design/archive)"
+    }
+  },
+  "languages": [
+    { "id": "en", "name": "English", "skillsDir": "skills" },
+    { "id": "zh", "name": "中文", "skillsDir": "skills-zh" }
+  ]
+}

@@ -1,0 +1,787 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { parse, stringify } from 'yaml';
+import { createBundleDraft } from '../../../domains/bundle/draft.js';
+import { buildReadinessUserSummary } from '../../../domains/bundle/readiness-user-summary.js';
+import { buildBundleReviewSummary } from '../../../domains/bundle/review-summary.js';
+import {
+  generateBundleDraftFromFactoryState,
+  initializeBundleFactoryState,
+} from '../../../domains/bundle/factory.js';
+import { normalizeWorkflowDefinition } from '../../../domains/workflow-contract/index.js';
+import {
+  reconcileBundleAuthoringState,
+  writeBundleAuthoringState,
+} from '../../../domains/bundle/state.js';
+import type { BundleAuthoringState } from '../../../domains/bundle/types.js';
+import { workflowFor as workflowDefinitionFor } from '../../helpers/workflow-plan.js';
+
+async function writeMinimalBundle(root: string, name: string): Promise<void> {
+  await fs.mkdir(path.join(root, 'skills', name), { recursive: true });
+  await fs.writeFile(
+    path.join(root, 'skills', name, 'SKILL.md'),
+    `---\nname: ${name}\ndescription: Demo.\n---\n\n# ${name}\n`,
+  );
+  await fs.writeFile(
+    path.join(root, 'bundle.yaml'),
+    `apiVersion: coda/v1alpha1
+kind: SkillBundle
+metadata:
+  name: ${name}
+  version: 1.0.0
+  description: Demo
+  defaultLocale: en
+  locales: [en]
+skills:
+  - id: ${name}
+    path: skills/${name}
+    visibility: entry
+resources:
+  rules: []
+  hooks: []
+  references: []
+  scripts: []
+  assets: []
+platforms:
+  requires: [skills]
+  optional: []
+  overrides: []
+engine:
+  enabled: false
+`,
+  );
+}
+
+async function writeHookedBundle(root: string, name: string): Promise<void> {
+  await fs.mkdir(path.join(root, 'skills', name), { recursive: true });
+  await fs.mkdir(path.join(root, 'hooks'), { recursive: true });
+  await fs.mkdir(path.join(root, 'scripts'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, 'skills', name, 'SKILL.md'),
+    `---\nname: ${name}\ndescription: Demo.\n---\n\n# ${name}\n`,
+  );
+  await fs.writeFile(
+    path.join(root, 'hooks', 'protect-write.yaml'),
+    `event: before_write
+script: verify
+failure: block
+requiresConfirmation: false
+`,
+  );
+  await fs.writeFile(path.join(root, 'scripts', 'verify.mjs'), 'console.log("verify");\n');
+  await fs.writeFile(
+    path.join(root, 'bundle.yaml'),
+    `apiVersion: coda/v1alpha1
+kind: SkillBundle
+metadata:
+  name: ${name}
+  version: 1.0.0
+  description: Demo
+  defaultLocale: en
+  locales: [en]
+skills:
+  - id: ${name}
+    path: skills/${name}
+    visibility: entry
+resources:
+  rules: []
+  hooks:
+    - id: protect-write
+      path: hooks/protect-write.yaml
+  references: []
+  scripts:
+    - id: verify
+      path: scripts/verify.mjs
+      sideEffect: read
+      runtime: node
+  assets: []
+platforms:
+  requires: [skills, hooks]
+  optional: []
+  overrides: []
+engine:
+  enabled: false
+`,
+  );
+}
+
+async function writeFactorySkill(projectRoot: string, name: string): Promise<void> {
+  const skillRoot = path.join(projectRoot, '.coda', 'skills', name);
+  await fs.mkdir(skillRoot, { recursive: true });
+  await fs.writeFile(
+    path.join(skillRoot, 'SKILL.md'),
+    `---\nname: ${name}\ndescription: ${name}.\n---\n\n# ${name}\n`,
+    'utf8',
+  );
+}
+
+function workflowFor(name: string, skills: string[]): ReturnType<typeof workflowDefinitionFor> {
+  return workflowDefinitionFor(name, skills);
+}
+
+async function createFactoryStateWithGeneratedPackage(
+  projectRoot: string,
+  name: string,
+): Promise<BundleAuthoringState> {
+  await writeFactorySkill(projectRoot, `${name}-source`);
+  const planFile = path.join(projectRoot, `${name}-plan.json`);
+  await fs.mkdir(projectRoot, { recursive: true });
+  await fs.writeFile(
+    planFile,
+    JSON.stringify(
+      {
+        goal: `Generate ${name}.`,
+        preferredSkills: [`${name}-source`],
+        workflow: workflowFor(name, [`${name}-source`]),
+        engineMode: 'deterministic',
+        runnerMode: 'standalone',
+        defaultLocale: 'en',
+        locales: ['en'],
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  const initialized = await initializeBundleFactoryState({
+    projectRoot,
+    name,
+    filePath: planFile,
+    confirmedProposal: true,
+  });
+  return generateBundleDraftFromFactoryState({ projectRoot, state: initialized });
+}
+
+describe('Bundle review summary readiness', () => {
+  let projectRoot: string;
+
+  beforeEach(async () => {
+    projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'coda-review-summary-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('blocks unresolved Factory candidates and missing benchmark evidence', async () => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: 'factory-demo',
+      candidates: [],
+      creator: 'native',
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: true,
+      factory: {
+        goal: 'Demo',
+        preferredSkills: ['missing-skill'],
+        resolvedSkills: [
+          { query: 'missing-skill', preferenceIndex: 0, status: 'missing', sources: [] },
+        ],
+        callChain: [{ skill: 'missing-skill', preferenceIndex: 0 }],
+        deviations: [],
+        engineMode: 'deterministic',
+        runnerMode: 'standalone',
+      },
+    });
+    await writeMinimalBundle(state.draftPath, 'factory-demo');
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-demo',
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.state).toBe('blocked');
+    expect(summary.readiness.blockers).toContain(
+      '[candidate] Unresolved Factory candidates: missing-skill (missing)',
+    );
+    expect(summary.readiness.blockers).toContain(
+      '[benchmark] Benchmark evidence for the current draft hash is missing',
+    );
+  });
+
+  it('surfaces Factory composition issues as readiness blockers', async () => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: 'factory-composition-blocked',
+      candidates: [],
+      creator: 'native',
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: true,
+      factory: {
+        goal: 'Demo',
+        preferredSkills: ['task3-choice-flow'],
+        resolvedSkills: [],
+        callChain: [{ skill: 'task3-choice-flow', preferenceIndex: 0 }],
+        deviations: [],
+        composition: {
+          schemaVersion: 1,
+          entrySkills: ['task3-choice-flow'],
+          steps: [],
+          choices: [
+            {
+              id: 'review',
+              fromSkill: 'task3-choice-flow',
+              options: ['task3-missing-review'],
+              selectedSkill: null,
+              reason: 'No options are available in resolved Skills.',
+            },
+          ],
+          issues: [
+            {
+              type: 'unresolved-choice',
+              message: 'Choice review from task3-choice-flow has no available options.',
+              choiceId: 'review',
+            },
+          ],
+        },
+        engineMode: 'deterministic',
+        runnerMode: 'standalone',
+      },
+    });
+    await writeMinimalBundle(state.draftPath, 'factory-composition-blocked');
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-composition-blocked',
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.state).toBe('blocked');
+    expect(summary.readiness.blockers).toContain(
+      '[composition] Choice review from task3-choice-flow has no available options.',
+    );
+    expect(summary.readiness.evidence).toMatchObject({
+      compositionIssues: '1 issue(s)',
+      compositionChoices: '1 choice(s)',
+    });
+    expect(summary.readiness.evidence).not.toHaveProperty('composition');
+  });
+
+  it('blocks publish readiness when Factory proposal confirmation is missing', async () => {
+    const generated = await createFactoryStateWithGeneratedPackage(
+      projectRoot,
+      'missing-proposal-confirmation',
+    );
+    const legacyState: BundleAuthoringState = {
+      ...generated,
+      status: 'review-approved',
+      eval: {
+        level: 'quick',
+        hash: generated.currentHash!,
+        resultPath: 'eval.json',
+        passed: true,
+      },
+      review: {
+        hash: generated.currentHash!,
+        decision: 'approved',
+        reviewer: 'alice',
+        at: '2026-06-24T00:00:00.000Z',
+      },
+      factory: {
+        ...generated.factory!,
+        proposalConfirmation: undefined,
+      },
+    };
+    delete legacyState.factory!.proposalConfirmation;
+    await writeBundleAuthoringState(projectRoot, legacyState);
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'missing-proposal-confirmation',
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.state).toBe('blocked');
+    expect(summary.readiness.blockers).toContain(
+      '[proposal] Factory proposal confirmation is missing',
+    );
+    expect(summary.userSummary.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'proposal',
+          severity: 'blocker',
+          nextAction: expect.objectContaining({
+            command: expect.stringContaining('--confirmed-proposal'),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('surfaces preference hash evidence and drift warnings', async () => {
+    await fs.mkdir(path.join(projectRoot, '.coda'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.coda', 'skill-preferences.yaml'),
+      `version: 1
+mode: advisory
+prefer:
+  - preference-drift-source
+`,
+      'utf8',
+    );
+    const state = await createFactoryStateWithGeneratedPackage(projectRoot, 'preference-drift');
+    await fs.writeFile(
+      path.join(projectRoot, '.coda', 'skill-preferences.yaml'),
+      `version: 1
+mode: advisory
+prefer:
+  - changed-skill
+`,
+      'utf8',
+    );
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: state.name,
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.evidence).toHaveProperty(
+      'preferenceHash',
+      state.factory?.preferenceHash,
+    );
+    expect(summary.readiness.warnings).toContain(
+      '[preference] Project Skill preferences changed after Factory initialization',
+    );
+  });
+
+  it('blocks strict preference drift', async () => {
+    await fs.mkdir(path.join(projectRoot, '.coda'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.coda', 'skill-preferences.yaml'),
+      `version: 1
+mode: strict
+prefer:
+  - strict-preference-drift-source
+`,
+      'utf8',
+    );
+    const state = await createFactoryStateWithGeneratedPackage(
+      projectRoot,
+      'strict-preference-drift',
+    );
+    await fs.writeFile(
+      path.join(projectRoot, '.coda', 'skill-preferences.yaml'),
+      `version: 1
+mode: strict
+prefer:
+  - changed-skill
+`,
+      'utf8',
+    );
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: state.name,
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.blockers).toContain(
+      '[preference] Project Skill preferences changed after Factory initialization',
+    );
+  });
+
+  it('blocks unresolved required Skills in strict preference mode', async () => {
+    const state = await createBundleDraft({
+      projectRoot,
+      name: 'strict-required-missing',
+      candidates: [],
+      creator: 'native',
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: true,
+      factory: {
+        goal: 'Demo',
+        preferredSkills: ['missing-skill'],
+        requiredSkills: ['missing-skill'],
+        preferenceMode: 'strict',
+        resolvedSkills: [
+          { query: 'missing-skill', preferenceIndex: 0, status: 'missing', sources: [] },
+        ],
+        callChain: [{ skill: 'missing-skill', preferenceIndex: 0 }],
+        deviations: [],
+        engineMode: 'deterministic',
+        runnerMode: 'standalone',
+      },
+    });
+    await writeMinimalBundle(state.draftPath, 'strict-required-missing');
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'strict-required-missing',
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.blockers).toContain(
+      '[preference] Required Skill candidates are unresolved: missing-skill (missing)',
+    );
+  });
+
+  it('surfaces missing factory control-plane files as readiness blockers', async () => {
+    const state = await createFactoryStateWithGeneratedPackage(
+      projectRoot,
+      'stable-missing-control',
+    );
+    await fs.rm(
+      path.join(state.draftPath, 'skills', 'stable-missing-control', 'scripts', 'coda-check.mjs'),
+    );
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'stable-missing-control',
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.blockers).toEqual(
+      expect.arrayContaining(['[control-plane] missing scripts/coda-check.mjs']),
+    );
+    expect(summary.readiness.evidence.controlPlane).toEqual(expect.stringMatching(/file\(s\)$/u));
+    expect(summary.readiness.evidence.controlPlaneErrors).toEqual(
+      expect.stringMatching(/error\(s\)$/u),
+    );
+  });
+
+  it('surfaces degraded factory bundle.yaml capabilities as readiness blockers', async () => {
+    const state = await createFactoryStateWithGeneratedPackage(
+      projectRoot,
+      'stable-degraded-capabilities',
+    );
+    const manifestPath = path.join(state.draftPath, 'bundle.yaml');
+    const manifest = parse(await fs.readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+    manifest.platforms = {
+      requires: ['skills', 'scripts', 'rules', 'hooks'],
+      optional: [],
+      overrides: [],
+    };
+    await fs.writeFile(manifestPath, stringify(manifest), 'utf8');
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'stable-degraded-capabilities',
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.blockers).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/\[control-plane\].*references|required capabilities/iu),
+      ]),
+    );
+  });
+
+  it('is publishable only when eval and review match the current hash', async () => {
+    await createBundleDraft({
+      projectRoot,
+      name: 'factory-ready',
+      candidates: [],
+      creator: 'native',
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: true,
+    });
+    const draftPath = path.join(projectRoot, '.coda', 'bundle-drafts', 'factory-ready');
+    await writeMinimalBundle(draftPath, 'factory-ready');
+    const state = await reconcileBundleAuthoringState(projectRoot, 'factory-ready');
+    const readyState: BundleAuthoringState = {
+      ...state,
+      status: 'review-approved',
+      currentHash: state.currentHash,
+      eval: {
+        level: 'quick',
+        hash: state.currentHash!,
+        resultPath: 'eval.json',
+        passed: true,
+      },
+      review: {
+        hash: state.currentHash!,
+        decision: 'approved',
+        reviewer: 'alice',
+        at: '2026-06-22T00:00:00.000Z',
+      },
+    };
+    await writeBundleAuthoringState(projectRoot, readyState);
+
+    const summary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-ready',
+      platform: 'claude',
+    });
+
+    expect(summary.readiness.state).toBe('publishable');
+    expect(summary.readiness.blockers).toEqual([]);
+    expect(summary.userSummary.nextSteps).toEqual([
+      {
+        label: 'Publish the approved candidate',
+        command: 'coda publish run factory-ready --platform <reference-platform>',
+      },
+    ]);
+  });
+
+  it('adds fallback next steps for publishable and published states without user-summary items', () => {
+    expect(
+      buildReadinessUserSummary('ready-bundle', {
+        state: 'publishable',
+        blockers: [],
+        warnings: [],
+        evidence: {},
+      }).nextSteps,
+    ).toEqual([
+      {
+        label: 'Publish the approved candidate',
+        command: 'coda publish run ready-bundle --platform <reference-platform>',
+      },
+    ]);
+
+    expect(
+      buildReadinessUserSummary('ready-bundle', {
+        state: 'published',
+        blockers: [],
+        warnings: [],
+        evidence: {},
+      }).nextSteps,
+    ).toEqual([
+      {
+        label: 'Preview distribution before installing into Agent platforms',
+        command:
+          'coda publish distribute ready-bundle --platform <platform> --scope project --preview',
+      },
+    ]);
+  });
+
+  it('classifies readiness blockers by type and exposes all readiness states', async () => {
+    const generatedState = await createFactoryStateWithGeneratedPackage(
+      projectRoot,
+      'factory-classified',
+    );
+    const draftPath = generatedState.draftPath;
+    const workflow = normalizeWorkflowDefinition(
+      workflowFor('factory-classified', ['missing-skill']),
+    );
+    const blockedState = await reconcileBundleAuthoringState(projectRoot, 'factory-classified');
+    await writeBundleAuthoringState(projectRoot, {
+      ...blockedState,
+      status: 'draft',
+      currentHash: generatedState.currentHash,
+      factory: {
+        ...blockedState.factory!,
+        preferredSkills: ['missing-skill'],
+        workflowDefinition: workflow.input,
+        workflowProtocol: workflow.protocol,
+        resolvedSkills: [
+          { query: 'missing-skill', preferenceIndex: 0, status: 'missing', sources: [] },
+        ],
+        callChain: [{ skill: 'missing-skill', preferenceIndex: 0 }],
+      },
+    });
+
+    const blocked = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-classified',
+      platform: 'claude',
+    });
+    expect(blocked.readiness.state).toBe('blocked');
+    expect(blocked.readiness.blockers).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('[candidate]'),
+        expect.stringContaining('[benchmark]'),
+      ]),
+    );
+    expect(blocked.userSummary).toMatchObject({
+      conclusion: 'blocked',
+      title: 'Cannot publish yet',
+    });
+    expect(blocked.userSummary.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'candidate',
+          severity: 'blocker',
+          nextAction: expect.objectContaining({
+            label: expect.stringContaining('Resolve'),
+          }),
+        }),
+        expect.objectContaining({
+          code: 'benchmark',
+          severity: 'blocker',
+          nextAction: expect.objectContaining({
+            command: expect.stringContaining('coda eval '),
+          }),
+        }),
+      ]),
+    );
+
+    await writeBundleAuthoringState(projectRoot, {
+      ...blockedState,
+      status: 'eval-passed',
+      currentHash: blockedState.currentHash,
+      factory: {
+        ...blockedState.factory!,
+        proposalConfirmation: {
+          confirmed: true,
+          confirmedAt: '2026-06-23T00:00:00.000Z',
+          proposalHash: 'a'.repeat(64),
+          preferenceHash: null,
+          acceptedCapabilities: ['skills', 'scripts', 'rules', 'hooks', 'references'],
+          warnings: [],
+        },
+        resolvedSkills: [
+          {
+            query: 'missing-skill',
+            preferenceIndex: 0,
+            status: 'available',
+            sources: [
+              {
+                hash: 'sha256:demo',
+                root: path.join(projectRoot, 'skills', 'missing-skill'),
+                scope: 'project',
+                skillMd: path.join(projectRoot, 'skills', 'missing-skill', 'SKILL.md'),
+                references: [],
+                scripts: [],
+              },
+            ],
+          },
+        ],
+        generatedSkillPackage: {
+          ...blockedState.factory!.generatedSkillPackage!,
+          unauthoredSubstanceNodes: [],
+        },
+      },
+      eval: {
+        level: 'quick',
+        hash: blockedState.currentHash!,
+        resultPath: path.join(projectRoot, 'eval.json'),
+        passed: true,
+      },
+    });
+
+    const reviewable = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-classified',
+      platform: 'claude',
+    });
+    expect(reviewable.readiness.state).toBe('reviewable');
+    expect(reviewable.userSummary).toMatchObject({
+      conclusion: 'needs-confirmation',
+      title: 'Ready for review approval',
+    });
+    expect(reviewable.readiness.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('[review]')]),
+    );
+
+    await writeBundleAuthoringState(projectRoot, {
+      ...(await reconcileBundleAuthoringState(projectRoot, 'factory-classified')),
+      status: 'review-approved',
+      currentHash: blockedState.currentHash,
+      eval: {
+        level: 'quick',
+        hash: blockedState.currentHash!,
+        resultPath: path.join(projectRoot, 'eval.json'),
+        passed: true,
+      },
+      review: {
+        hash: blockedState.currentHash!,
+        decision: 'approved',
+        reviewer: 'alice',
+        at: '2026-06-23T00:00:00.000Z',
+      },
+    });
+
+    const publishable = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-classified',
+      platform: 'claude',
+    });
+    expect(publishable.readiness.state).toBe('publishable');
+    expect(publishable.userSummary).toMatchObject({
+      conclusion: 'can-publish',
+      title: 'Ready to publish',
+    });
+    expect(publishable.userSummary.nextSteps.length).toBeGreaterThan(0);
+
+    await writeBundleAuthoringState(projectRoot, {
+      ...(await reconcileBundleAuthoringState(projectRoot, 'factory-classified')),
+      status: 'ready',
+      currentHash: blockedState.currentHash,
+      eval: {
+        level: 'quick',
+        hash: blockedState.currentHash!,
+        resultPath: path.join(projectRoot, 'eval.json'),
+        passed: true,
+      },
+      review: {
+        hash: blockedState.currentHash!,
+        decision: 'approved',
+        reviewer: 'alice',
+        at: '2026-06-23T00:00:00.000Z',
+      },
+      ready: {
+        hash: blockedState.currentHash!,
+        path: path.join(projectRoot, '.coda', 'bundles', 'factory-classified'),
+        publishedAt: '2026-06-23T00:00:00.000Z',
+      },
+    });
+    await fs.mkdir(path.join(projectRoot, '.coda', 'bundles'), { recursive: true });
+    await fs.cp(draftPath, path.join(projectRoot, '.coda', 'bundles', 'factory-classified'), {
+      recursive: true,
+    });
+
+    const published = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-classified',
+      platform: 'claude',
+    });
+    expect(published.status).toBe('ready');
+    expect(published.readiness.state).toBe('published');
+    expect(published.userSummary).toMatchObject({
+      conclusion: 'published',
+      title: 'Already published',
+    });
+    expect(published.userSummary.nextSteps.length).toBeGreaterThan(0);
+  });
+
+  it('surfaces capability and executable-disclosure readiness hints from real platform compile output', async () => {
+    await createBundleDraft({
+      projectRoot,
+      name: 'factory-capability',
+      candidates: [],
+      creator: 'native',
+      defaultLocale: 'en',
+      locales: ['en'],
+      engineEnabled: false,
+    });
+    const draftPath = path.join(projectRoot, '.coda', 'bundle-drafts', 'factory-capability');
+    await writeHookedBundle(draftPath, 'factory-capability');
+    const state = await reconcileBundleAuthoringState(projectRoot, 'factory-capability');
+    await writeBundleAuthoringState(projectRoot, {
+      ...state,
+      status: 'eval-passed',
+      eval: {
+        level: 'quick',
+        hash: state.currentHash!,
+        resultPath: path.join(projectRoot, 'eval.json'),
+        passed: true,
+      },
+    });
+
+    const kimiSummary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-capability',
+      platform: 'kimicode',
+    });
+    expect(kimiSummary.readiness.blockers).toEqual(
+      expect.arrayContaining([expect.stringContaining('[capability]')]),
+    );
+
+    const claudeSummary = await buildBundleReviewSummary({
+      projectRoot,
+      name: 'factory-capability',
+      platform: 'claude',
+    });
+    expect(claudeSummary.readiness.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('[executable]')]),
+    );
+  });
+});

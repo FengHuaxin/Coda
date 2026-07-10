@@ -1,0 +1,9 @@
+﻿{
+  "coda-archive.sh": "25f31f2daa4e36b6d0bf7008982b02c714a4e8003a497c6c473e25b5f1fce474",
+  "coda-env.sh": "73eae6608e4522436d3e933cfd289846a639014e498a3587fd2b27304fe028e7",
+  "coda-guard.sh": "937b41c74172f83e2d37800b93d59e3da1d0794a5f09c478cdae6eb8cabd5542",
+  "coda-handoff.sh": "b2bd64ac215cceb4db3c00ddf94fbac11d4afcdd64d9a954df8ce96e739cfb38",
+  "coda-hook-guard.sh": "4747b31c83856895d13eda9f380d0f702c52ea1771a5b72d9ee5c8481f84e315",
+  "coda-state.sh": "ddfacdc7e1c5b21244778f970f1c3e13a5ad6c406457970e03d615be9e67390e",
+  "coda-yaml-validate.sh": "282be12087455acfa7aaf83e4b925e7945786acd43c06f85fb7148174a990238"
+}

@@ -1,0 +1,13 @@
+allowedSkills:
+  - Coda-open
+  - Coda-design
+  - Coda-build
+  - Coda-verify
+  - Coda-archive
+  - Coda-hotfix
+  - Coda-tweak
+allowedAgents: []
+allowedTools: []
+maxIterations: 500
+maxRetriesPerAction: 3
+confirmationRequiredFor: []
