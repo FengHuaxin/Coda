@@ -624,26 +624,3 @@ Track our development progress and upcoming features on the [Coda Roadmap](https
 ## License
 
 [MIT](LICENSE)
-
-## Community
-
-<table align="center">
-  <tr>
-    <td align="center" width="180">
-      <img src="https://github.com/rpamis/Coda/blob/master/img/douyin.png" width="120" height="120"><br>
-      <b>DouYin (Recommended)</b>
-    </td>
-    <td align="center" width="180">
-      <img src="https://github.com/rpamis/Coda/blob/master/img/wechat.jpg" width="120" height="120"><br>
-      <b>WeChat</b>
-    </td>
-    <td align="center" width="180">
-      <img src="https://github.com/rpamis/Coda/blob/master/img/qq.jpg" width="120" height="120"><br>
-      <b>QQ</b>
-    </td>
-  </tr>
-</table>
-
-## Reference
-
-[LINUX DO - 新的理想型社区](https://linux.do/)
