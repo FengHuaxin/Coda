@@ -607,20 +607,6 @@ skills, scripts, or changelog entries.
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
-## Roadmap
-
-Track our development progress and upcoming features on the [Coda Roadmap](https://github.com/orgs/rpamis/projects/1).
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=rpamis/Coda&type=Date)](https://star-history.com/#rpamis/Coda&Date)
-
-## Contributors
-
-<a href="https://github.com/rpamis/Coda/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=rpamis/Coda&columns=12&anon=1" />
-</a>
-
 ## License
 
 [MIT](LICENSE)
