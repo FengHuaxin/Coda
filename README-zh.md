@@ -594,7 +594,7 @@ Coda 在 Design → Build 交接时支持上下文压缩。开启后，`Coda-han
 ## 开发
 
 开发搭建、提交约定、PR 流程、分支工作流，以及新增平台、Skill、脚本、Changelog 条目的指导见
-[CONTRIBUTING.md](CONTRIBUTING.md) | [中文版](CONTRIBUTING-zh.md)。
+[README.md](README.md) | [中文版](README-zh.md)。
 
 版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 
