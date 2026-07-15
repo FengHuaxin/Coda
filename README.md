@@ -601,7 +601,7 @@ See [AUTO-TRANSITION.md](docs/AUTO-TRANSITION.md) for configuration details, wor
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) | [中文版](README-zh.md) for development setup, commit
+See [README.md](README.md) | [中文版](README-zh.md) for development setup, commit
 conventions, PR process, branch workflow, and guidance for adding platforms,
 skills, scripts, or changelog entries.
 
