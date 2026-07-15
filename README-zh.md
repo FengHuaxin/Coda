@@ -598,42 +598,11 @@ Coda 在 Design → Build 交接时支持上下文压缩。开启后，`Coda-han
 
 版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 
-## 路线图
-
-在 [Coda 路线图](https://github.com/orgs/rpamis/projects/1) 跟踪开发进展和即将推出的功能。
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=rpamis/Coda&type=Date)](https://star-history.com/#rpamis/Coda&Date)
-
-## 贡献者
-
-<a href="https://github.com/rpamis/Coda/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=rpamis/Coda&columns=12&anon=1" />
-</a>
-
 ## 许可证
 
 [MIT](LICENSE)
 
-## 社区
 
-<table align="center">
-  <tr>
-    <td align="center" width="180">
-      <img src="https://github.com/rpamis/Coda/blob/master/img/douyin.png" width="120" height="120"><br>
-      <b>抖音（推荐）</b>
-    </td>
-    <td align="center" width="180">
-      <img src="https://github.com/rpamis/Coda/blob/master/img/wechat.jpg" width="120" height="120"><br>
-      <b>微信</b>
-    </td>
-    <td align="center" width="180">
-      <img src="https://github.com/rpamis/Coda/blob/master/img/qq.jpg" width="120" height="120"><br>
-      <b>QQ</b>
-    </td>
-  </tr>
-</table>
 
 ## 参考
 
