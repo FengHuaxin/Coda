@@ -601,9 +601,3 @@ Coda 在 Design → Build 交接时支持上下文压缩。开启后，`Coda-han
 ## 许可证
 
 [MIT](LICENSE)
-
-
-
-## 参考
-
-[LINUX DO - 新的理想型社区](https://linux.do/)
